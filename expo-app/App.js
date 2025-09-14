@@ -78,8 +78,7 @@ const App = () => {
       Alert.alert('Error', data.message);
     });
 
-    // Start sending mock player movements
-    startMockMovement();
+    // Note: Mock movement is now controlled manually via buttons
 
     // Cleanup on unmount
     return () => {
@@ -119,6 +118,96 @@ const App = () => {
     setPlayerMoves([]);
   };
 
+  const manualConnect = () => {
+    if (socketRef.current && !isConnected) {
+      socketRef.current.connect();
+    } else if (!socketRef.current) {
+      // Reinitialize socket if it doesn't exist
+      socketRef.current = io(SERVER_URL, {
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+      });
+      
+      // Re-attach event handlers
+      socketRef.current.on('connect', () => {
+        console.log('Connected to server');
+        setIsConnected(true);
+        setCurrentPlayer(socketRef.current.id);
+      });
+
+      socketRef.current.on('disconnect', () => {
+        console.log('Disconnected from server');
+        setIsConnected(false);
+        setCurrentPlayer(null);
+      });
+
+      socketRef.current.on('connected', (data) => {
+        console.log('Connection confirmed:', data);
+        Alert.alert('Connected', `Player ID: ${data.playerId}`);
+      });
+
+      socketRef.current.on('player_move', (data) => {
+        console.log('Player moved:', data);
+        setPlayerMoves(prev => {
+          const newMove = {
+            id: `${data.playerId}-${Date.now()}`,
+            playerId: data.playerId,
+            x: data.x,
+            y: data.y,
+            timestamp: new Date().toLocaleTimeString(),
+          };
+          
+          const updated = [newMove, ...prev].slice(0, 20);
+          return updated;
+        });
+      });
+
+      socketRef.current.on('player_joined', (data) => {
+        console.log('Player joined:', data.playerId);
+        Alert.alert('Player Joined', `Player ${data.playerId} joined the game`);
+      });
+
+      socketRef.current.on('player_left', (data) => {
+        console.log('Player left:', data.playerId);
+        Alert.alert('Player Left', `Player ${data.playerId} left the game`);
+      });
+
+      socketRef.current.on('error', (data) => {
+        console.error('Socket error:', data.message);
+        Alert.alert('Error', data.message);
+      });
+    }
+  };
+
+  const manualDisconnect = () => {
+    if (socketRef.current && isConnected) {
+      socketRef.current.disconnect();
+    }
+  };
+
+  const sendManualMove = () => {
+    if (socketRef.current && isConnected) {
+      const manualMove = {
+        playerId: socketRef.current.id,
+        x: Math.floor(Math.random() * 1000),
+        y: Math.floor(Math.random() * 1000),
+      };
+      
+      console.log('Sending manual player move:', manualMove);
+      socketRef.current.emit('player_move', manualMove);
+    } else {
+      Alert.alert('Not Connected', 'Please connect to the server first');
+    }
+  };
+
+  const toggleAutoMovement = () => {
+    if (moveIntervalRef.current) {
+      stopMockMovement();
+    } else {
+      startMockMovement();
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
@@ -140,6 +229,40 @@ const App = () => {
       </View>
 
       <View style={styles.controls}>
+        <TouchableOpacity 
+          style={[styles.button, styles.connectButton]} 
+          onPress={manualConnect}
+          disabled={isConnected}
+        >
+          <Text style={styles.buttonText}>Connect</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.button, styles.disconnectButton]} 
+          onPress={manualDisconnect}
+          disabled={!isConnected}
+        >
+          <Text style={styles.buttonText}>Disconnect</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.button, styles.moveButton]} 
+          onPress={sendManualMove}
+          disabled={!isConnected}
+        >
+          <Text style={styles.buttonText}>Send Move</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.button, styles.autoButton]} 
+          onPress={toggleAutoMovement}
+          disabled={!isConnected}
+        >
+          <Text style={styles.buttonText}>
+            {moveIntervalRef.current ? 'Stop Auto' : 'Start Auto'}
+          </Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity 
           style={[styles.button, styles.clearButton]} 
           onPress={clearMoves}
@@ -219,16 +342,31 @@ const styles = StyleSheet.create({
   controls: {
     padding: 15,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
   },
   button: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 6,
-    marginHorizontal: 5,
+    marginHorizontal: 3,
+    marginVertical: 3,
+    minWidth: 80,
+  },
+  connectButton: {
+    backgroundColor: '#28a745',
+  },
+  disconnectButton: {
+    backgroundColor: '#dc3545',
+  },
+  moveButton: {
+    backgroundColor: '#007bff',
+  },
+  autoButton: {
+    backgroundColor: '#ffc107',
   },
   clearButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#6c757d',
   },
   buttonText: {
     color: '#fff',
